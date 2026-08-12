@@ -1,0 +1,7 @@
+interface:
+  display_name: "Codex Video Pipeline"
+  short_description: "从选题、脚本和素材一路完成 AI 视频、封面与发布包"
+  brand_color: "#102A43"
+  default_prompt: "使用 $codex-video-pipeline 完成首次配置，并带我用内置示例走完一次视频生产流程。"
+policy:
+  allow_implicit_invocation: true

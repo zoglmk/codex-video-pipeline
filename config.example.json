@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "renderer": "hyperframes",
+  "research": "agent-web",
+  "imageProvider": "imagegen",
+  "ttsProvider": "agent",
+  "captionProvider": "auto-acoustic",
+  "realFootageProvider": "pexels-optional",
+  "musicProvider": "user-or-licensed",
+  "defaults": {
+    "language": "zh-CN",
+    "platform": "douyin",
+    "ratio": "16:9",
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "minimumDurationSeconds": 80,
+    "progressBar": "bottom"
+  }
+}
