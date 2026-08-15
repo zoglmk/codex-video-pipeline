@@ -6,16 +6,17 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import re
 import shutil
 import struct
 import subprocess
+import sys
 from datetime import datetime, timezone
+from fractions import Fraction
 from pathlib import Path
 from typing import Any
 
+from runtime import run_python, safe_title
 
-SAFE_TITLE = re.compile(r"^[^/\\\x00-\x1f]+$")
 REQUIRED_PROCESS_FILES = ("INPUT.md", "RESEARCH.md", "SCRIPT.md", "STORYBOARD.md", "SOURCES.md")
 TARGET_DIMENSIONS = {"16:9": (1920, 1080), "9:16": (1080, 1920), "1:1": (1080, 1080)}
 
@@ -42,12 +43,10 @@ def sha256(path: Path) -> str:
 
 
 def validate_title(title: str) -> str:
-    value = title.strip()
-    if not value or value in {".", ".."} or not SAFE_TITLE.fullmatch(value):
-        raise SystemExit("标题不能为空，也不能包含路径分隔符或控制字符")
-    if len(value) > 80:
-        raise SystemExit("标题不宜超过 80 个字符")
-    return value
+    try:
+        return safe_title(title)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
 
 
 def write_new(path: Path, content: str) -> None:
@@ -58,6 +57,8 @@ def write_new(path: Path, content: str) -> None:
 
 def command_init(args: argparse.Namespace) -> int:
     title = validate_title(args.title)
+    if title != args.title.strip():
+        print(f"标题已转换为跨平台安全文件名：{title}", file=sys.stderr)
     root = args.root.expanduser().resolve()
     project = root / title
     if project.exists():
@@ -84,6 +85,7 @@ def command_init(args: argparse.Namespace) -> int:
         "ratio": args.ratio,
         "width": TARGET_DIMENSIONS[args.ratio][0],
         "height": TARGET_DIMENSIONS[args.ratio][1],
+        "fps": args.fps,
         "targetDurationSeconds": args.duration,
         "status": "initialized",
         "captionReceipt": "captions/caption-receipt.json",
@@ -114,7 +116,7 @@ def probe_video(path: Path) -> dict[str, Any]:
             "-v",
             "error",
             "-show_entries",
-            "format=duration:stream=index,codec_type,codec_name,width,height,r_frame_rate",
+            "format=duration:stream=index,codec_type,codec_name,width,height,r_frame_rate,sample_rate,channels",
             "-of",
             "json",
             str(path),
@@ -125,11 +127,15 @@ def probe_video(path: Path) -> dict[str, Any]:
     )
     if result.returncode != 0:
         return {"ok": False, "error": result.stderr.strip() or "ffprobe 失败"}
-    data = json.loads(result.stdout)
+    try:
+        data = json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        return {"ok": False, "error": f"ffprobe 返回了无效 JSON：{exc}"}
     streams = data.get("streams") or []
     video_streams = [item for item in streams if item.get("codec_type") == "video"]
     audio_streams = [item for item in streams if item.get("codec_type") == "audio"]
     video = video_streams[0] if video_streams else {}
+    audio = audio_streams[0] if audio_streams else {}
     return {
         "ok": bool(video_streams and audio_streams),
         "durationSeconds": float((data.get("format") or {}).get("duration") or 0),
@@ -137,8 +143,18 @@ def probe_video(path: Path) -> dict[str, Any]:
         "height": int(video.get("height") or 0),
         "frameRate": video.get("r_frame_rate"),
         "videoCodec": video.get("codec_name"),
+        "audioCodec": audio.get("codec_name"),
+        "audioSampleRate": int(audio.get("sample_rate") or 0),
+        "audioChannels": int(audio.get("channels") or 0),
         "audioTracks": len(audio_streams),
     }
+
+
+def numeric_frame_rate(value: Any) -> float:
+    try:
+        return float(Fraction(str(value)))
+    except (ValueError, ZeroDivisionError):
+        return 0.0
 
 
 def png_dimensions(path: Path) -> tuple[int, int] | None:
@@ -157,11 +173,9 @@ def receipt_status(project: Path, manifest: dict[str, Any]) -> dict[str, Any]:
     if not receipt.is_file():
         return {"ok": False, "path": str(receipt), "error": "缺少字幕声学对齐凭据"}
     script = Path(__file__).resolve().parent / "caption_gate.py"
-    result = subprocess.run(
-        ["python3", str(script), "verify", "--receipt", str(receipt), "--json"],
-        capture_output=True,
-        text=True,
-        check=False,
+    result = run_python(
+        script,
+        ["verify", "--receipt", str(receipt), "--json"],
     )
     try:
         data = json.loads(result.stdout)
@@ -207,6 +221,14 @@ def command_verify(args: argparse.Namespace) -> int:
             )
         if target_duration > 0 and float(media.get("durationSeconds") or 0) < target_duration * 0.9:
             errors.append("最终视频明显短于项目目标时长")
+        target_fps = float(manifest.get("fps") or 30)
+        actual_fps = numeric_frame_rate(media.get("frameRate"))
+        if actual_fps <= 0 or abs(actual_fps - target_fps) > 0.05:
+            errors.append(f"最终视频帧率应约为 {target_fps:g}fps，实际为 {media.get('frameRate')}")
+        if str(media.get("videoCodec") or "").lower() != "h264":
+            errors.append(f"最终视频编码应为 H.264，实际为 {media.get('videoCodec') or '未知'}")
+        if str(media.get("audioCodec") or "").lower() != "aac":
+            errors.append(f"最终音频编码应为 AAC，实际为 {media.get('audioCodec') or '未知'}")
 
     for label, size in (("coverHorizontal", (1920, 1080)), ("coverVertical", (1080, 1920))):
         path = expected[label]
@@ -250,6 +272,7 @@ def build_parser() -> argparse.ArgumentParser:
     init_parser.add_argument("--title", required=True)
     init_parser.add_argument("--platform", default="douyin")
     init_parser.add_argument("--ratio", choices=("16:9", "9:16", "1:1"), default="16:9")
+    init_parser.add_argument("--fps", type=int, choices=(24, 25, 30, 50, 60), default=30)
     init_parser.add_argument("--duration", type=int, default=90)
     init_parser.set_defaults(handler=command_init)
 

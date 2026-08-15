@@ -4,9 +4,19 @@
 
 ## 准备项目
 
+macOS / Linux：
+
 ~~~bash
 python3 scripts/example.py --root videos
 ~~~
+
+Windows PowerShell：
+
+~~~powershell
+python scripts/example.py --root videos
+~~~
+
+Windows 没有 `python` 时使用 `py -3`。脚本会复用当前 Python 解释器调用项目初始化器，因此不要求系统额外存在名为 `python3` 的命令。项目根目录可以包含空格和中文。
 
 脚本会创建项目，并复制一份杂乱的会议记录。不要直接使用本文件里的预期答案替代真实处理。
 

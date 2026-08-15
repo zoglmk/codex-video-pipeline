@@ -5,8 +5,9 @@ from __future__ import annotations
 
 import argparse
 import shutil
-import subprocess
 from pathlib import Path
+
+from runtime import run_python
 
 
 def main() -> int:
@@ -17,10 +18,15 @@ def main() -> int:
 
     skill = Path(__file__).resolve().parent.parent
     project_script = skill / "scripts" / "project.py"
-    result = subprocess.run(
+    source = skill / "examples" / "ai-meeting-notes"
+    required = (source / "INPUT.md", source / "source" / "meeting-notes.txt")
+    missing = [str(path) for path in required if not path.is_file()]
+    if missing:
+        raise SystemExit(f"内置示例不完整：{', '.join(missing)}")
+
+    result = run_python(
+        project_script,
         [
-            "python3",
-            str(project_script),
             "init",
             "--root",
             str(args.root),
@@ -33,14 +39,10 @@ def main() -> int:
             "--duration",
             "90",
         ],
-        capture_output=True,
-        text=True,
-        check=False,
     )
     if result.returncode != 0:
         raise SystemExit(result.stderr.strip() or result.stdout.strip())
     project = Path(result.stdout.strip()).resolve()
-    source = skill / "examples" / "ai-meeting-notes"
     shutil.copy2(source / "INPUT.md", project / "INPUT.md")
     shutil.copy2(source / "source" / "meeting-notes.txt", project / "assets" / "meeting-notes.txt")
     print(project)

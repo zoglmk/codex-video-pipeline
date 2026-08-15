@@ -5,12 +5,13 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
+import os
 import shutil
+import uuid
 from pathlib import Path
 
+from runtime import safe_title
 
-SAFE_TITLE = re.compile(r"^[^/\\\x00-\x1f]+$")
 
 
 def source(path: Path, label: str) -> Path:
@@ -31,9 +32,10 @@ def main() -> int:
     parser.add_argument("--overwrite", action="store_true")
     args = parser.parse_args()
 
-    title = args.title.strip()
-    if not title or not SAFE_TITLE.fullmatch(title):
-        raise SystemExit("标题无效")
+    try:
+        title = safe_title(args.title)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
     project = args.project.expanduser().resolve()
     manifest = project / "project.json"
     if not manifest.is_file():
@@ -43,16 +45,28 @@ def main() -> int:
         raise SystemExit(f"标题与项目不一致：项目为 {project_title}，参数为 {title}")
     output = project / "产出"
     output.mkdir(parents=True, exist_ok=True)
-    mapping = {
-        source(args.video, "视频"): output / f"{title}.mp4",
-        source(args.cover_horizontal, "横版封面"): output / "封面-1920×1080.png",
-        source(args.cover_vertical, "竖版封面"): output / "封面-1080×1920.png",
-        source(args.publish_copy, "发布文案"): output / "发布文案.md",
-    }
-    for src, dst in mapping.items():
+    mapping = [
+        (source(args.video, "视频"), output / f"{title}.mp4"),
+        (source(args.cover_horizontal, "横版封面"), output / "封面-1920×1080.png"),
+        (source(args.cover_vertical, "竖版封面"), output / "封面-1080×1920.png"),
+        (source(args.publish_copy, "发布文案"), output / "发布文案.md"),
+    ]
+    for _, dst in mapping:
         if dst.exists() and not args.overwrite:
             raise SystemExit(f"目标已存在：{dst}；如确需替换请明确使用 --overwrite")
-        shutil.copy2(src, dst)
+
+    staged: list[tuple[Path, Path]] = []
+    try:
+        for src, dst in mapping:
+            temporary = dst.with_name(f".{dst.name}.{uuid.uuid4().hex}.tmp")
+            shutil.copy2(src, temporary)
+            staged.append((temporary, dst))
+        for temporary, dst in staged:
+            os.replace(temporary, dst)
+    finally:
+        for temporary, _ in staged:
+            if temporary.exists():
+                temporary.unlink()
     print(output)
     return 0
 

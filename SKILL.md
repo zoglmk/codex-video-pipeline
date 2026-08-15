@@ -10,16 +10,18 @@ license: MIT
 
 ## 第一次使用
 
-先运行环境检查：
+先完整读取 [references/cross-platform.md](references/cross-platform.md)，确认当前系统、Python 3.10+ 解释器、路径和终端类型。macOS/Linux 优先解析 `python3`，Windows 优先使用当前 Codex 的 `python.exe`，普通终端依次尝试 `py -3`、`python`。不得把某个平台的命令名写死到脚本或其他平台的命令中。
+
+下文中的 `<PYTHON_COMMAND>` 表示刚刚实际验证可用的解释器调用；它是占位符，不能连同尖括号原样执行。使用该解释器运行环境检查：
 
 ~~~bash
-python3 scripts/setup.py doctor --json
+<PYTHON_COMMAND> scripts/setup.py doctor --json
 ~~~
 
 如果没有配置文件，继续运行：
 
 ~~~bash
-python3 scripts/setup.py configure --recommended
+<PYTHON_COMMAND> scripts/setup.py configure --recommended
 ~~~
 
 然后读取 [references/first-run.md](references/first-run.md)，逐项帮助用户完成配置。遵守以下规则：
@@ -28,6 +30,7 @@ python3 scripts/setup.py configure --recommended
 - 其他 AI Agent 缺少 Skill 时，给出上游 GitHub 地址，让该 Agent 使用自己的 Skill 安装机制处理。
 - 只检测密钥是否存在，绝不读取、回显或写入项目文件。
 - 安装系统工具、Python/Node 依赖或调用付费 API 前，先说明影响并获得用户确认。
+- Windows 安装 FFmpeg 或 Node.js 后，重新打开终端或刷新 Agent，并重新检查当前进程的 `PATH`；不能把“文件已下载”当作“命令已可用”。
 - 配置完成后运行内置示例；不要只告诉用户“安装成功”。
 
 ## 需要的能力
@@ -59,7 +62,7 @@ python3 scripts/setup.py configure --recommended
 在用户工作目录创建项目：
 
 ~~~bash
-python3 scripts/project.py init \
+<PYTHON_COMMAND> scripts/project.py init \
   --root videos \
   --title "中文视频标题" \
   --platform douyin \
@@ -100,7 +103,7 @@ python3 scripts/project.py init \
 字幕提供方完成对齐后，运行：
 
 ~~~bash
-python3 scripts/caption_gate.py record \
+<PYTHON_COMMAND> scripts/caption_gate.py record \
   --audio path/to/final-voice.wav \
   --captions path/to/captions.json \
   --provider "实际使用的声学转写器" \
@@ -148,7 +151,7 @@ python3 scripts/caption_gate.py record \
 把最终文件打包到项目自己的 `产出/`：
 
 ~~~bash
-python3 scripts/package_outputs.py \
+<PYTHON_COMMAND> scripts/package_outputs.py \
   --project videos/中文视频标题 \
   --title "中文视频标题" \
   --video path/to/final.mp4 \
@@ -160,7 +163,7 @@ python3 scripts/package_outputs.py \
 最后运行：
 
 ~~~bash
-python3 scripts/project.py verify --project videos/中文视频标题 --json
+<PYTHON_COMMAND> scripts/project.py verify --project videos/中文视频标题 --json
 ~~~
 
 所有硬门通过后才能宣布完成。

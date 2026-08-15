@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import shutil
 import subprocess
 from datetime import datetime, timezone
@@ -66,9 +67,28 @@ def emit(data: dict[str, Any], path: Path | None, as_json: bool = False) -> None
         print(rendered, end="")
 
 
+def portable_path(path: Path, receipt_path: Path) -> tuple[str, str]:
+    """优先保存相对路径，使整个项目移动到另一台电脑后仍可验证。"""
+
+    try:
+        relative = Path(os.path.relpath(path, receipt_path.parent))
+    except ValueError:
+        return str(path), "absolute"
+    return relative.as_posix(), "receipt"
+
+
+def resolve_recorded_path(receipt_path: Path, section: dict[str, Any]) -> Path:
+    raw = str(section.get("path") or "")
+    path = Path(raw)
+    if section.get("pathBase") == "receipt" or not path.is_absolute():
+        path = receipt_path.parent / path
+    return path.expanduser().resolve()
+
+
 def command_record(args: argparse.Namespace) -> int:
     audio = args.audio.expanduser().resolve()
     captions = args.captions.expanduser().resolve()
+    output = args.output.expanduser().resolve()
     if not audio.is_file() or not captions.is_file():
         raise SystemExit("音频或字幕文件不存在")
     items = read_items(captions)
@@ -77,21 +97,29 @@ def command_record(args: argparse.Namespace) -> int:
         raise SystemExit("最后一条字幕明显超过音频结尾")
     if args.provider.lower() in {"estimated", "character-count", "manual-estimate", "unknown"}:
         raise SystemExit("发布字幕不能使用字数估时或未知提供方")
+    audio_path, audio_base = portable_path(audio, output)
+    captions_path, captions_base = portable_path(captions, output)
     receipt = {
         "schemaVersion": 1,
         "method": "acoustic-alignment",
         "provider": args.provider,
         "createdAt": datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds"),
-        "audio": {"path": str(audio), "sha256": sha256(audio), "durationSeconds": audio_duration},
+        "audio": {
+            "path": audio_path,
+            "pathBase": audio_base,
+            "sha256": sha256(audio),
+            "durationSeconds": audio_duration,
+        },
         "captions": {
-            "path": str(captions),
+            "path": captions_path,
+            "pathBase": captions_base,
             "sha256": sha256(captions),
             "count": len(items),
             "firstStart": items[0]["start"],
             "lastEnd": items[-1]["end"],
         },
     }
-    emit(receipt, args.output.expanduser().resolve(), args.json)
+    emit(receipt, output, args.json)
     return 0
 
 
@@ -103,13 +131,15 @@ def command_verify(args: argparse.Namespace) -> int:
     except (OSError, json.JSONDecodeError) as exc:
         receipt = {}
         errors.append(f"凭据无法读取：{exc}")
-    audio = Path(str((receipt.get("audio") or {}).get("path") or ""))
-    captions = Path(str((receipt.get("captions") or {}).get("path") or ""))
+    audio_section = receipt.get("audio") or {}
+    captions_section = receipt.get("captions") or {}
+    audio = resolve_recorded_path(receipt_path, audio_section)
+    captions = resolve_recorded_path(receipt_path, captions_section)
     if receipt.get("method") != "acoustic-alignment":
         errors.append("不是声学对齐凭据")
     for label, path, expected in (
-        ("音频", audio, (receipt.get("audio") or {}).get("sha256")),
-        ("字幕", captions, (receipt.get("captions") or {}).get("sha256")),
+        ("音频", audio, audio_section.get("sha256")),
+        ("字幕", captions, captions_section.get("sha256")),
     ):
         if not path.is_file():
             errors.append(f"{label}文件不存在：{path}")

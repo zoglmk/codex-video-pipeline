@@ -14,10 +14,26 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from runtime import python_command
 
-DEFAULT_CONFIG = Path.home() / ".config" / "codex-video-pipeline" / "config.json"
+SCRIPT_PATH = Path(__file__).resolve()
 HYPERFRAMES_GITHUB = "https://github.com/heygen-com/hyperframes"
 AGENT_REACH_GITHUB = "https://github.com/Panniantong/Agent-Reach"
+
+
+def default_config_path() -> Path:
+    override = os.environ.get("CODEX_VIDEO_PIPELINE_CONFIG")
+    if override:
+        return Path(override).expanduser()
+    legacy = Path.home() / ".config" / "codex-video-pipeline" / "config.json"
+    if platform.system() == "Windows" and os.environ.get("APPDATA"):
+        windows_path = Path(os.environ["APPDATA"]) / "codex-video-pipeline" / "config.json"
+        return legacy if legacy.exists() and not windows_path.exists() else windows_path
+    xdg = os.environ.get("XDG_CONFIG_HOME")
+    return Path(xdg) / "codex-video-pipeline" / "config.json" if xdg else legacy
+
+
+DEFAULT_CONFIG = default_config_path()
 
 
 def now_iso() -> str:
@@ -38,6 +54,19 @@ def emit(data: Any, as_json: bool) -> None:
 def executable(name: str) -> dict[str, Any]:
     path = shutil.which(name)
     return {"ready": bool(path), "path": path}
+
+
+def install_hint(tool: str) -> str:
+    system = platform.system()
+    if tool == "ffmpeg":
+        if system == "Windows":
+            return "经用户确认后可用 winget install Gyan.FFmpeg；完成后重开终端，确认 ffmpeg 和 ffprobe 都在 PATH"
+        if system == "Darwin":
+            return "经用户确认后可用 brew install ffmpeg，再确认 ffmpeg 和 ffprobe 都可执行"
+        return "经用户确认后使用当前发行版的包管理器安装 FFmpeg，并确认 ffmpeg 和 ffprobe 都可执行"
+    if system == "Windows":
+        return "经用户确认后安装 Node.js LTS；完成后重开终端，确认 node、npm 和 npx 都在 PATH"
+    return "经用户确认后安装 Node.js LTS，并确认 node、npm 和 npx 都在 PATH"
 
 
 def module_ready(name: str) -> bool:
@@ -99,8 +128,20 @@ def doctor(args: argparse.Namespace) -> int:
     hyperframes = find_skill("hyperframes")
     ffmpeg = executable("ffmpeg")
     ffprobe = executable("ffprobe")
+    node = executable("node")
+    npm = executable("npm")
+    npx = executable("npx")
     python_ok = sys.version_info >= (3, 10)
-    actions: list[dict[str, str]] = []
+    actions: list[dict[str, Any]] = []
+
+    if not python_ok:
+        actions.append(
+            {
+                "id": "upgrade-python",
+                "required": "true",
+                "message": "需要 Python 3.10 或更高版本；安装或切换解释器前先征得用户确认",
+            }
+        )
 
     if not hyperframes["ready"]:
         actions.append(
@@ -117,6 +158,16 @@ def doctor(args: argparse.Namespace) -> int:
                 "id": "install-ffmpeg",
                 "required": "true",
                 "message": "安装 FFmpeg（包含 ffprobe）；这是系统级变更，执行前先征得用户确认",
+                "hint": install_hint("ffmpeg"),
+            }
+        )
+    if not node["ready"] or not npm["ready"] or not npx["ready"]:
+        actions.append(
+            {
+                "id": "install-node",
+                "required": "true",
+                "message": "安装 Node.js LTS（包含 npm 和 npx）；这是系统级变更，执行前先征得用户确认",
+                "hint": install_hint("node"),
             }
         )
     if config_error:
@@ -124,7 +175,8 @@ def doctor(args: argparse.Namespace) -> int:
             {
                 "id": "configure",
                 "required": "true",
-                "message": "运行 python3 scripts/setup.py configure --recommended",
+                "message": "使用当前 Python 解释器运行 setup.py configure --recommended",
+                "command": python_command(SCRIPT_PATH, "configure", "--recommended", "--config", str(config_path)),
             }
         )
 
@@ -132,11 +184,14 @@ def doctor(args: argparse.Namespace) -> int:
         "schemaVersion": 1,
         "checkedAt": now_iso(),
         "platform": {"system": platform.system(), "machine": platform.machine()},
-        "python": {"ready": python_ok, "version": platform.python_version()},
+        "python": {"ready": python_ok, "version": platform.python_version(), "executable": sys.executable},
         "core": {
             "hyperframes": hyperframes,
             "ffmpeg": ffmpeg,
             "ffprobe": ffprobe,
+            "node": node,
+            "npm": npm,
+            "npx": npx,
             "git": executable("git"),
         },
         "optional": {
@@ -165,6 +220,9 @@ def doctor(args: argparse.Namespace) -> int:
         and hyperframes["ready"]
         and ffmpeg["ready"]
         and ffprobe["ready"]
+        and node["ready"]
+        and npm["ready"]
+        and npx["ready"]
         and config is not None,
     }
     emit(report, args.json)
@@ -231,6 +289,7 @@ def guide(args: argparse.Namespace) -> int:
         "steps": [
             "把本仓库 GitHub 链接交给 AI Agent，让它按自身的 Skill 安装方式安装",
             "Codex 用户在插件页安装 HyperFrames；其他 Agent 使用 HyperFrames GitHub 链接",
+            "按当前系统选择可用的 Python 3.10+ 解释器，不要把 python3 写死到 Windows 命令中",
             "让 Agent 运行 doctor，只处理报告里的缺失项",
             "运行 configure；配置文件只保存选择，不保存任何密钥",
             "Codex 直接使用 imagegen；其他 Agent 缺少原生图片能力时配置图像生成接口",

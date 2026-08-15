@@ -48,7 +48,7 @@ Agent 会依次完成：
 4. 缺少外部能力时逐项解释，不自动安装系统软件或调用付费 API。
 5. 运行内置示例，最终交付实际 MP4、两张封面和发布文案。
 
-你也可以在仓库目录运行：
+你也可以在仓库目录运行。macOS / Linux：
 
 ~~~bash
 python3 scripts/setup.py doctor --json
@@ -56,14 +56,32 @@ python3 scripts/setup.py guide
 python3 scripts/setup.py configure --recommended
 ~~~
 
-配置文件只记录提供方选择，默认位于 `~/.config/codex-video-pipeline/config.json`；API Key、Token 和 Cookie 不会写入项目或仓库。
+Windows PowerShell（Codex 自带运行时通常使用 `python.exe`）：
+
+~~~powershell
+python scripts/setup.py doctor --json
+python scripts/setup.py guide
+python scripts/setup.py configure --recommended
+~~~
+
+如果普通 Windows 终端没有 `python`，再尝试把上述命令开头替换为 `py -3`。Skill 内部脚本会复用当前解释器，不再依赖名为 `python3` 的命令。完整说明见 [跨平台运行指南](references/cross-platform.md)。
+
+配置文件只记录提供方选择。Windows 默认位于 `%APPDATA%\codex-video-pipeline\config.json`，macOS / Linux 默认位于 `~/.config/codex-video-pipeline/config.json`；API Key、Token 和 Cookie 不会写入项目或仓库。
 
 ## 内置示例
 
-示例主题是“让 AI 把杂乱会议记录变成行动清单”。它会检验整个链路，而不是只生成一个脚本：
+示例主题是“让 AI 把杂乱会议记录变成行动清单”。它会检验整个链路，而不是只生成一个脚本。
+
+macOS / Linux：
 
 ~~~bash
 python3 scripts/example.py --root videos
+~~~
+
+Windows PowerShell：
+
+~~~powershell
+python scripts/example.py --root videos
 ~~~
 
 然后把终端返回的项目路径交给 Agent：
@@ -86,6 +104,14 @@ python3 scripts/example.py --root videos
 - Pexels 素材也保留创作者、素材页、许可证和文件指纹。
 - 最终字幕必须来自成片实际使用的旁白音频；字数估时只能预览。
 - 任何系统安装、付费 API 或大规模下载，都应先取得用户确认。
+
+## 跨平台支持
+
+- 支持 macOS、Windows 和 Linux 的 Python 3.10+ 环境；
+- 首次检查同时验证 FFmpeg、ffprobe、Node.js、npm、npx 和 HyperFrames；
+- 支持包含中文与空格的路径，并自动处理 Windows 禁止字符和保留文件名；
+- 字幕凭据使用可移动的相对路径，项目整体换目录或换电脑后仍可验证；
+- GitHub Actions 会在 macOS、Windows 和 Linux 上运行基础测试。
 
 ## 参考
 

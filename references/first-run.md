@@ -2,6 +2,8 @@
 
 目标不是把依赖全部装满，而是让用户用自己现有的 Agent 完成一条真实视频。每一步先解释“为什么需要”，再告诉用户怎么做。
 
+开始前完整读取 [cross-platform.md](cross-platform.md)，先确认当前系统和实际可用的 Python 3.10+ 解释器。Windows 不得照抄 macOS 的 `python3`、Homebrew 或 Unix 路径。
+
 ## 1. 安装公开 Skill
 
 让用户把本仓库 GitHub 链接交给自己的 AI Agent，并说：
@@ -19,11 +21,19 @@
 
 ## 3. 只读检查
 
-运行：
+macOS / Linux 运行：
 
 ~~~bash
 python3 scripts/setup.py doctor --json
 ~~~
+
+Windows PowerShell 运行：
+
+~~~powershell
+python scripts/setup.py doctor --json
+~~~
+
+Windows 没有 `python` 时尝试 `py -3`。已经由某个 Python 进程启动后，Skill 内部子脚本会自动复用当前解释器。
 
 按 `actions` 逐项处理。不要为了让报告变绿就自动安装全部可选项：
 
@@ -33,10 +43,16 @@ python3 scripts/setup.py doctor --json
 
 ## 4. 创建配置
 
-运行：
+macOS / Linux 运行：
 
 ~~~bash
 python3 scripts/setup.py configure --recommended
+~~~
+
+Windows PowerShell 运行：
+
+~~~powershell
+python scripts/setup.py configure --recommended
 ~~~
 
 这一步只写提供方选择，不写密钥。若用户已有明确方案，可改用：
@@ -47,6 +63,8 @@ python3 scripts/setup.py configure \
   --captions mlx-whisper \
   --footage pexels-optional
 ~~~
+
+Windows 使用同样的参数，把开头替换为 `python` 或 `py -3`；PowerShell 可以把命令写在一行，避免照抄 Bash 的反斜杠续行。
 
 ## 5. 逐项选择外部能力
 
@@ -74,8 +92,16 @@ Codex 默认直接使用原生 `imagegen`，不需要额外配置。
 
 需要时才配置 Pexels。用户在 Pexels 申请 API Key 后，把它放到环境或系统安全存储：
 
+macOS / Linux 当前终端：
+
 ~~~bash
 export PEXELS_API_KEY="仅在当前终端使用的值"
+~~~
+
+Windows PowerShell 当前会话：
+
+~~~powershell
+$env:PEXELS_API_KEY = "仅在当前会话使用的值"
 ~~~
 
 不要把真实值写入 `.env` 后提交到 GitHub。没有真实视频不影响内置示例完成。
@@ -90,9 +116,7 @@ export PEXELS_API_KEY="仅在当前终端使用的值"
 
 ## 6. 运行示例
 
-~~~bash
-python3 scripts/example.py --root videos
-~~~
+macOS / Linux 使用 `python3 scripts/example.py --root videos`；Windows PowerShell 使用 `python scripts/example.py --root videos`，没有 `python` 时使用 `py -3`。
 
 读取 [example-run.md](example-run.md)，继续到实际成片。首次示例完成后再让用户替换为自己的主题。
 
